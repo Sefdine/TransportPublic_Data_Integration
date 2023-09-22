@@ -140,13 +140,17 @@ display(df)
 
 # COMMAND ----------
 
+display(df.head(2))
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Durée de voyage
 # MAGIC Soustraire l'heure de départ et l'heure d'arrivée
 
 # COMMAND ----------
 
-df = df.withColumn('CurrentDelay', expr("ArrivalTime - DepartureTime")).cast(IntegerType() / 1000)
+df = df.withColumn('CurrentDelay', expr("ArrivalTime - DepartureTime"))
 
 # Convert times to format HH:mm
 df = df.withColumn('DepartureTime', date_format(df['DepartureTime'], 'HH:mm'))
