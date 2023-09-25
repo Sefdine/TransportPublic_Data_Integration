@@ -255,3 +255,13 @@ df = df.join(result_df, on='Route', how='left')
 # COMMAND ----------
 
 display(df)
+
+# COMMAND ----------
+
+# Save the DataFrame to a CSV file
+df.write.csv('/mnt/staging2/processed/data_cleaned.csv', header=True)
+
+# COMMAND ----------
+
+# MAGIC %fs 
+# MAGIC ls /mnt/staging2/processed
