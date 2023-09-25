@@ -84,9 +84,13 @@
 # MAGIC %scala
 # MAGIC dbutils.fs.mount(
 # MAGIC     source = url,
-# MAGIC     mountPoint = "/mnt/staging",
+# MAGIC     mountPoint = "/mnt/staging2",
 # MAGIC     extraConfigs = Map(config -> sas)
 # MAGIC )
+
+# COMMAND ----------
+
+# MAGIC %fs ls /mnt/
 
 # COMMAND ----------
 
@@ -96,13 +100,12 @@
 
 # COMMAND ----------
 
-df = spark.read.csv("/mnt/staging/raw/public-transport-data-650c6707b7a50741400514.csv", header=True)
+df = spark.read.csv("/mnt/staging2/raw/public-transport-data-650c6707b7a50741400514.csv", header=True)
 
 
 # COMMAND ----------
 
-
-from pyspark.sql.functions import col, year, month, date_format, expr, dayofmonth
+from pyspark.sql.functions import col, year, month, date_format, expr, day, udf
 from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
 
 # Define a dictionary to map column names to their data types
@@ -168,6 +171,15 @@ def transform_time(arrival_time):
 
 # COMMAND ----------
 
+# Register the transform_time function as a UDF
+transform_time_udf = udf(transform_time, StringType())
+
+# Apply the functions in the dataset
+df = df.withColumn("ArrivalTime", transform_time_udf(df['ArrivalTime']))
+
+# COMMAND ----------
+
+# Calculate delay between departTime and arrivalTime
 df = df.withColumn("CurrentDelay", expr(
     "from_unixtime(unix_timestamp(ArrivalTime, 'HH:mm') - unix_timestamp(DepartureTime, 'HH:mm'), 'HH:mm')"
 ))
@@ -180,12 +192,55 @@ df = df.withColumn("CurrentDelay", expr(
 
 # COMMAND ----------
 
+def category_late(currentDelay):
+    parts = currentDelay.split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1])
+
+    if minutes < 1: 
+        return 'Pas de Retard'
+    elif minutes <= 10:
+        return 'Retard Court'
+    elif minutes <= 20:
+        return 'Retard Moyen'
+    else:
+        return 'Long Retard'
+    
+category_late_udf = udf(category_late, StringType())
+
+# COMMAND ----------
+
+df = df.withColumn('CategoryLate', category_late_udf(df['CurrentDelay']))
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Analyse des Passagers
 # MAGIC Identifier les heures de pointe et hors pointe en fonction du nombre de passagers.
 
 # COMMAND ----------
 
+def peak_hours(passengers):
+    passengers = int(passengers)
+
+    if passengers >= 50:
+        return 'Heure de pointe'
+    else:
+        return 'Heure hors pointe'
+    
+peak_hours_udf = udf(peak_hours, StringType())
+
+
+# COMMAND ----------
+
+df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Analyse des Itinéraires
 # MAGIC Calculer le retard moyen, le nombre moyen de passagers et le nombre total de voyages pour chaque itinéraire.
+
+# COMMAND ----------
+
+display(df)
