@@ -71,7 +71,7 @@
 # MAGIC %scala
 # MAGIC var containerName = "publictransportdata"
 # MAGIC var storageAccountName = "sefdinenassufblobcontain"
-# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-22T18:59:37Z&st=2023-09-22T10:59:37Z&spr=https&sig=Dw8729WqHuaaolekXDEvNJNUMaAJ4U71xSSex5Z9LrI%3D"
+# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-25T17:05:06Z&st=2023-09-25T08:05:06Z&spr=https&sig=51hZv8JMWYZH2lgqJDxChfW9ikWFEGucyYfgUw2s10o%3D"
 
 # COMMAND ----------
 
@@ -102,7 +102,7 @@ df = spark.read.csv("/mnt/staging/raw/public-transport-data-650c6707b7a507414005
 # COMMAND ----------
 
 
-from pyspark.sql.functions import col, year, day, month, date_format, expr
+from pyspark.sql.functions import col, year, month, date_format, expr, dayofmonth
 from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
 
 # Define a dictionary to map column names to their data types
@@ -110,8 +110,6 @@ column_types = {
     'Date': DateType(),
     'TransportType': StringType(),
     'Route': StringType(),
-    'DepartureTime': TimestampType(),
-    'ArrivalTime': TimestampType(),
     'Passengers': IntegerType(),
     'DepartureStation': StringType(),
     'ArrivalStation': StringType(),
@@ -150,11 +148,29 @@ display(df.head(2))
 
 # COMMAND ----------
 
-df = df.withColumn('CurrentDelay', expr("ArrivalTime - DepartureTime"))
+def transform_time(arrival_time):
+    parts = arrival_time.split(':')
+    hours = int(parts[0])
+    minutes = int(parts[1])
 
-# Convert times to format HH:mm
-df = df.withColumn('DepartureTime', date_format(df['DepartureTime'], 'HH:mm'))
-df = df.withColumn('ArrivalTime', date_format(df['ArrivalTime'], 'HH:mm'))
+    # Check if minutes exceed 59
+    if minutes > 59:
+        # Set minutes to 00
+        hours += 1
+        minutes = 0
+
+    # Check if hours exceed 23
+    if hours > 23:
+        # Set hours to 00
+        hours = 0
+        
+    return f'{hours:02d}:{minutes:02d}'
+
+# COMMAND ----------
+
+df = df.withColumn("CurrentDelay", expr(
+    "from_unixtime(unix_timestamp(ArrivalTime, 'HH:mm') - unix_timestamp(DepartureTime, 'HH:mm'), 'HH:mm')"
+))
 
 # COMMAND ----------
 
