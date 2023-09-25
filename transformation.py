@@ -105,7 +105,7 @@ df = spark.read.csv("/mnt/staging2/raw/public-transport-data-650c6707b7a50741400
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, year, month, date_format, expr, day, udf
+from pyspark.sql.functions import col, year, month, date_format, expr, day, udf, avg, sum
 from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
 
 # Define a dictionary to map column names to their data types
@@ -240,6 +240,17 @@ df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
 # MAGIC %md
 # MAGIC ## Analyse des Itinéraires
 # MAGIC Calculer le retard moyen, le nombre moyen de passagers et le nombre total de voyages pour chaque itinéraire.
+
+# COMMAND ----------
+
+result_df = df.groupBy('Route').agg(
+    avg('Delay').alias('AverageDelay'),
+    avg('Passengers').alias('AveragePassengers'),
+    sum('Delay').alias('TotalTrips')
+)
+
+# Join the aggregated DataFrame 'result_df' back to the original DataFrame 'df'
+df = df.join(result_df, on='Route', how='left')
 
 # COMMAND ----------
 
