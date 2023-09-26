@@ -4,8 +4,8 @@ import random
 from datetime import datetime, timedelta
 
 # Generate data for January 2023
-start_date = datetime(2023, 2, 1)
-end_date = datetime(2023, 2, 28)
+start_date = datetime(2023, 3, 1)
+end_date = datetime(2023, 3, 31)
 date_generated = [start_date + timedelta(days=x) for x in range(0, (end_date-start_date).days)]
 
 transport_types = ["Bus", "Train", "Tram", "Metro"]
@@ -63,10 +63,10 @@ for date in date_generated:
         data.append([date, transport, route, departure_time, arrival_time, passengers, departure_station, arrival_station, delay])
 
 df = pd.DataFrame(data, columns=["Date", "TransportType", "Route", "DepartureTime", "ArrivalTime", "Passengers", "DepartureStation", "ArrivalStation", "Delay"])
-df.to_csv("/mnt/staging/raw/public_transport_data-february.csv", index=False)
+df.to_csv("/dbfs/mnt/staging/raw/public_transport_data-march.csv", index=False)
 
 # COMMAND ----------
 
 # MAGIC %fs
-# MAGIC ls /mnt/staging/processed/data_cleaned.csv/
+# MAGIC ls /mnt/staging/raw
 # MAGIC
