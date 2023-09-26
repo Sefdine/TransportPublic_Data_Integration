@@ -68,5 +68,5 @@ df.to_csv("/dbfs/mnt/staging/raw/public_transport_data-march.csv", index=False)
 # COMMAND ----------
 
 # MAGIC %fs
-# MAGIC ls /mnt/staging/raw
+# MAGIC ls /mnt/staging/raw/
 # MAGIC
