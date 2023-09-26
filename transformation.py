@@ -68,10 +68,32 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC
+# MAGIC ## Configuration des paramètres de stockage Azure
+# MAGIC
+# MAGIC Dans cette section, nous configurons les paramètres nécessaires pour accéder au stockage Azure Blob.
+# MAGIC
+# MAGIC - **Nom du conteneur :** publictransportdata
+# MAGIC - **Nom du compte de stockage :** sefdinenassufblobcontain
+# MAGIC - **Signature d'Accès Partagé (SAS) :** ?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-26T18:30:48Z&st=2023-09-26T10:30:48Z&spr=https&sig=nu8xi1VHftfusb2%2Fp%2BLxHRnT4RszWQ3vdS7OgT%2Fo7o8%3D
+# MAGIC
+# MAGIC Ces paramètres sont essentiels pour établir une connexion sécurisée avec le stockage Azure Blob et accéder aux données stockées dans le conteneur.
+
+# COMMAND ----------
+
 # MAGIC %scala
 # MAGIC var containerName = "publictransportdata"
 # MAGIC var storageAccountName = "sefdinenassufblobcontain"
-# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-25T17:05:06Z&st=2023-09-25T08:05:06Z&spr=https&sig=51hZv8JMWYZH2lgqJDxChfW9ikWFEGucyYfgUw2s10o%3D"
+# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-26T18:30:48Z&st=2023-09-26T10:30:48Z&spr=https&sig=nu8xi1VHftfusb2%2Fp%2BLxHRnT4RszWQ3vdS7OgT%2Fo7o8%3D"
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC ## Configuration de l'URL et du paramètre de stockage Azure
+# MAGIC
+# MAGIC Dans cette section, nous configurons l'URL et le paramètre nécessaires pour accéder au stockage Azure Blob.
 
 # COMMAND ----------
 
@@ -81,16 +103,24 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC
+# MAGIC ## Montage du stockage Azure Blob
+# MAGIC
+# MAGIC Dans cette section, nous montons le stockage Azure Blob en utilisant les paramètres configurés précédemment.
+
+# COMMAND ----------
+
 # MAGIC %scala
 # MAGIC dbutils.fs.mount(
 # MAGIC     source = url,
-# MAGIC     mountPoint = "/mnt/staging2",
+# MAGIC     mountPoint = "/mnt/staging",
 # MAGIC     extraConfigs = Map(config -> sas)
 # MAGIC )
 
 # COMMAND ----------
 
-# MAGIC %fs ls /mnt/
+# MAGIC %fs ls /mnt/staging/raw
 
 # COMMAND ----------
 
@@ -100,13 +130,19 @@
 
 # COMMAND ----------
 
-df = spark.read.csv("/mnt/staging2/raw/public-transport-data-650c6707b7a50741400514.csv", header=True)
-
+# MAGIC %md
+# MAGIC
+# MAGIC ## Lecture et Traitement des Données
+# MAGIC
+# MAGIC Dans cette section, nous effectuons la lecture et le traitement des données en utilisant PySpark dans Azure Databricks.
 
 # COMMAND ----------
 
 from pyspark.sql.functions import col, year, month, date_format, expr, day, udf, avg, sum
 from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
+
+# Read the data
+df = spark.read.csv("/mnt/staging/raw/public-transport-data-650c6707b7a50741400514.csv", header=True)
 
 # Define a dictionary to map column names to their data types
 column_types = {
@@ -128,6 +164,14 @@ for col_name, col_type in column_types.items():
 # MAGIC %md
 # MAGIC ## Date
 # MAGIC Extraire le year, month et day of the month
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC ## Ajout de Colonnes pour l'Année, le Mois et le Jour
+# MAGIC
+# MAGIC Dans cette section, nous ajoutons trois nouvelles colonnes à notre DataFrame `df` pour représenter l'année, le mois et le jour à partir de la colonne 'Date'.
 
 # COMMAND ----------
 
