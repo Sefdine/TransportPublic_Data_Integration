@@ -4,8 +4,8 @@
 # from datetime import datetime, timedelta
 
 # # Generate data for January 2023
-# start_date = datetime(2023, 1, 1)
-# end_date = datetime(2023, 1, 31)
+# start_date = datetime(2023, 2, 1)
+# end_date = datetime(2023, 2, 28)
 # date_generated = [start_date + timedelta(days=x) for x in range(0, (end_date-start_date).days)]
 
 # transport_types = ["Bus", "Train", "Tram", "Metro"]
@@ -63,7 +63,7 @@
 #         data.append([date, transport, route, departure_time, arrival_time, passengers, departure_station, arrival_station, delay])
 
 # df = pd.DataFrame(data, columns=["Date", "TransportType", "Route", "DepartureTime", "ArrivalTime", "Passengers", "DepartureStation", "ArrivalStation", "Delay"])
-# df.to_csv("public_transport_data.csv", index=False)
+# df.to_csv("public_transport_data-february.csv", index=False)
 
 
 # COMMAND ----------
@@ -162,12 +162,6 @@ for col_name, col_type in column_types.items():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Date
-# MAGIC Extraire le year, month et day of the month
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC
 # MAGIC ## Ajout de Colonnes pour l'Année, le Mois et le Jour
 # MAGIC
@@ -175,26 +169,22 @@ for col_name, col_type in column_types.items():
 
 # COMMAND ----------
 
+# Create hierarchy of the date
 df = df.withColumn('Year', year(df['Date']))
 df = df.withColumn('Month', month(df['Date']))
 df = df.withColumn('Day', day(df['Date']))
 
 # COMMAND ----------
 
-display(df)
-
-# COMMAND ----------
-
-display(df.head(2))
-
-# COMMAND ----------
-
 # MAGIC %md
-# MAGIC ## Durée de voyage
-# MAGIC Soustraire l'heure de départ et l'heure d'arrivée
+# MAGIC
+# MAGIC ## Transformation des Heures et Calcul du Délai
+# MAGIC
+# MAGIC Dans cette section, nous effectuons la transformation des heures d'arrivée et calculons le délai entre l'heure de départ et l'heure d'arrivée dans notre DataFrame `df`.
 
 # COMMAND ----------
 
+# Define function to deal with the arrival times
 def transform_time(arrival_time):
     parts = arrival_time.split(':')
     hours = int(parts[0])
@@ -221,8 +211,6 @@ transform_time_udf = udf(transform_time, StringType())
 # Apply the functions in the dataset
 df = df.withColumn("ArrivalTime", transform_time_udf(df['ArrivalTime']))
 
-# COMMAND ----------
-
 # Calculate delay between departTime and arrivalTime
 df = df.withColumn("CurrentDelay", expr(
     "from_unixtime(unix_timestamp(ArrivalTime, 'HH:mm') - unix_timestamp(DepartureTime, 'HH:mm'), 'HH:mm')"
@@ -231,11 +219,14 @@ df = df.withColumn("CurrentDelay", expr(
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## RetardCategory
-# MAGIC 'Pas de Retard', 'Retard Court' (1-10 minutes), 'Retard Moyen' (11-20 minutes) et 'Long Retard' (>20 minutes).
+# MAGIC
+# MAGIC ## Catégorisation des Retards
+# MAGIC
+# MAGIC Dans cette section, nous effectuons la catégorisation des retards en fonction de la valeur du délai et ajoutons une nouvelle colonne 'CategoryLate' à notre DataFrame `df`.
 
 # COMMAND ----------
 
+# Define category_late function to deal with times
 def category_late(currentDelay):
     parts = currentDelay.split(':')
     hours = int(parts[0])
@@ -249,11 +240,11 @@ def category_late(currentDelay):
         return 'Retard Moyen'
     else:
         return 'Long Retard'
-    
+
+# Transform the function we created to user-defined function
 category_late_udf = udf(category_late, StringType())
 
-# COMMAND ----------
-
+# Apply the function the dataset
 df = df.withColumn('CategoryLate', category_late_udf(df['CurrentDelay']))
 
 # COMMAND ----------
@@ -264,6 +255,7 @@ df = df.withColumn('CategoryLate', category_late_udf(df['CurrentDelay']))
 
 # COMMAND ----------
 
+# Define function to guess the peak hours
 def peak_hours(passengers):
     passengers = int(passengers)
 
@@ -274,19 +266,23 @@ def peak_hours(passengers):
     
 peak_hours_udf = udf(peak_hours, StringType())
 
-
-# COMMAND ----------
-
+# Apply the function to our dataset
 df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Analyse des Itinéraires
-# MAGIC Calculer le retard moyen, le nombre moyen de passagers et le nombre total de voyages pour chaque itinéraire.
+# MAGIC
+# MAGIC ## Analyse des itinéraires
+# MAGIC
+# MAGIC Dans cette section, nous effectuons l'agrégation des données en fonction de la colonne 'Route' et rejoignons le DataFrame agrégé 'result_df' avec le DataFrame d'origine 'df'.
+# MAGIC
+# MAGIC On calculer le retard moyen, le nombre moyen de passagers et le nombre total de voyages pour chaque itinéraire.
+# MAGIC
 
 # COMMAND ----------
 
+# Agrégation des données par la colonne 'Route' avec calcul de la moyenne du retard, de la moyenne des passagers, et de la somme du retard
 result_df = df.groupBy('Route').agg(
     avg('Delay').alias('AverageDelay'),
     avg('Passengers').alias('AveragePassengers'),
@@ -298,14 +294,95 @@ df = df.join(result_df, on='Route', how='left')
 
 # COMMAND ----------
 
-display(df)
+# MAGIC %md
+# MAGIC
+# MAGIC ## Enregistrement du DataFrame dans un Fichier CSV
+# MAGIC
+# MAGIC Dans cette section, nous enregistrons le DataFrame `df` dans un fichier CSV.
+# MAGIC
 
 # COMMAND ----------
 
 # Save the DataFrame to a CSV file
-df.write.csv('/mnt/staging2/processed/data_cleaned.csv', header=True)
+df.write.csv('/mnt/staging/processed/data_cleaned.csv', header=True)
 
 # COMMAND ----------
 
 # MAGIC %fs 
-# MAGIC ls /mnt/staging2/processed
+# MAGIC ls /mnt/staging/processed
+
+# COMMAND ----------
+
+import pandas as pd
+import random
+from datetime import datetime, timedelta
+
+# Generate data for January 2023
+start_date = datetime(2023, 2, 1)
+end_date = datetime(2023, 2, 28)
+date_generated = [start_date + timedelta(days=x) for x in range(0, (end_date-start_date).days)]
+
+transport_types = ["Bus", "Train", "Tram", "Metro"]
+routes = ["Route_" + str(i) for i in range(1, 11)]
+stations = ["Station_" + str(i) for i in range(1, 21)]
+
+# Randomly select 5 days as extreme weather days
+extreme_weather_days = random.sample(date_generated, 5)
+
+data = []
+
+for date in date_generated:
+    for _ in range(32):  # 32 records per day to get a total of 992 records for January
+        transport = random.choice(transport_types)
+        route = random.choice(routes)
+
+        # Normal operating hours
+        departure_hour = random.randint(5, 22)
+        departure_minute = random.randint(0, 59)
+
+        # Introducing Unusual Operating Hours for buses
+        if transport == "Bus" and random.random() < 0.05:  # 5% chance
+            departure_hour = 3
+
+        departure_time = f"{departure_hour:02}:{departure_minute:02}"
+
+        # Normal duration
+        duration = random.randint(10, 120)
+
+        # Introducing Short Turnarounds
+        if random.random() < 0.05:  # 5% chance
+            duration = random.randint(1, 5)
+
+        # General delay
+        delay = random.randint(0, 15)
+
+        # Weather Impact
+        if date in extreme_weather_days:
+            # Increase delay by 10 to 60 minutes
+            delay += random.randint(10, 60)
+
+            # 10% chance to change the route
+            if random.random() < 0.10:
+                route = random.choice(routes)
+
+        total_minutes = departure_minute + duration + delay
+        arrival_hour = departure_hour + total_minutes // 60
+        arrival_minute = total_minutes % 60
+        arrival_time = f"{arrival_hour:02}:{arrival_minute:02}"
+
+        passengers = random.randint(1, 100)
+        departure_station = random.choice(stations)
+        arrival_station = random.choice(stations)
+
+        data.append([date, transport, route, departure_time, arrival_time, passengers, departure_station, arrival_station, delay])
+
+df = pd.DataFrame(data, columns=["Date", "TransportType", "Route", "DepartureTime", "ArrivalTime", "Passengers", "DepartureStation", "ArrivalStation", "Delay"])
+df.to_csv("/mnt/staging/raw/public_transport_data-february.csv", index=False)
+
+# COMMAND ----------
+
+# MAGIC %scala
+# MAGIC val source_path_in_dbfs = "/mnt/staging/processed/data_cleaned.csv"
+# MAGIC val destination_path_in_blob = "sefdinenassufblobcontain/publictransportdata/processed/data_cleaned.csv"
+# MAGIC
+# MAGIC dbutils.fs.cp(source_path_in_dbfs, s"wasbs://$destination_path_in_blob", recurse=true)
