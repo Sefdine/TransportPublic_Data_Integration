@@ -28,7 +28,7 @@
 # MAGIC %scala
 # MAGIC var containerName = "publictransportdata"
 # MAGIC var storageAccountName = "sefdinenassufblobcontain"
-# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-26T18:30:48Z&st=2023-09-26T10:30:48Z&spr=https&sig=nu8xi1VHftfusb2%2Fp%2BLxHRnT4RszWQ3vdS7OgT%2Fo7o8%3D"
+# MAGIC var sas = "?sv=2022-11-02&ss=b&srt=sco&sp=rwdlacyx&se=2023-09-27T17:46:28Z&st=2023-09-27T07:46:28Z&spr=https&sig=Lf%2Fo87HuI4dzcmLjHhVXX3sddA8L9f9lC2Wpr0ov%2F74%3D"
 
 # COMMAND ----------
 
@@ -55,11 +55,18 @@
 # COMMAND ----------
 
 # MAGIC %scala
-# MAGIC dbutils.fs.mount(
+# MAGIC val mountPoint = "/mnt/staging"
+# MAGIC val isMounted = dbutils.fs.mounts().map(_.mountPoint).contains(mountPoint)
+# MAGIC
+# MAGIC if (!isMounted) {
+# MAGIC   dbutils.fs.mount(
 # MAGIC     source = url,
-# MAGIC     mountPoint = "/mnt/staging",
+# MAGIC     mountPoint = mountPoint,
 # MAGIC     extraConfigs = Map(config -> sas)
-# MAGIC )
+# MAGIC   )
+# MAGIC } else {
+# MAGIC   println(s"The folder $mountPoint is already mounted.")
+# MAGIC }
 
 # COMMAND ----------
 
@@ -77,49 +84,23 @@
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, year, month, date_format, expr, day, udf, avg, sum
-from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
+# Retrieve raw files
+def get_raw_files():
+    # List of file paths
+    raw_file_paths = dbutils.fs.ls("/mnt/staging/raw")
+    
+    # Extract the file names
+    raw_file_names = [file_info.name for file_info in raw_file_paths]
+    return raw_file_names
 
-# Read the data
-df = spark.read.csv("/mnt/staging/raw/public-transport-data-650c6707b7a50741400514.csv", header=True)
-
-# Define a dictionary to map column names to their data types
-column_types = {
-    'Date': DateType(),
-    'TransportType': StringType(),
-    'Route': StringType(),
-    'Passengers': IntegerType(),
-    'DepartureStation': StringType(),
-    'ArrivalStation': StringType(),
-    'Delay': IntegerType()
-}
-
-# Cast the columns to their respective data types
-for col_name, col_type in column_types.items():
-    df = df.withColumn(col_name, col(col_name).cast(col_type))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC
-# MAGIC ## Ajout de Colonnes pour l'Année, le Mois et le Jour
-# MAGIC
-# MAGIC Dans cette section, nous ajoutons trois nouvelles colonnes à notre DataFrame `df` pour représenter l'année, le mois et le jour à partir de la colonne 'Date'.
-
-# COMMAND ----------
-
-# Create hierarchy of the date
-df = df.withColumn('Year', year(df['Date']))
-df = df.withColumn('Month', month(df['Date']))
-df = df.withColumn('Day', day(df['Date']))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC
-# MAGIC ## Transformation des Heures et Calcul du Délai
-# MAGIC
-# MAGIC Dans cette section, nous effectuons la transformation des heures d'arrivée et calculons le délai entre l'heure de départ et l'heure d'arrivée dans notre DataFrame `df`.
+# Retrieve processed files
+def get_processed_files():
+    # List of file paths
+    processed_file_paths = dbutils.fs.ls("/mnt/staging/processed")
+    
+    # Extract the file names
+    processed_file_names = [file_info.name for file_info in processed_file_paths]
+    return processed_file_names
 
 # COMMAND ----------
 
@@ -144,27 +125,6 @@ def transform_time(arrival_time):
 
 # COMMAND ----------
 
-# Register the transform_time function as a UDF
-transform_time_udf = udf(transform_time, StringType())
-
-# Apply the functions in the dataset
-df = df.withColumn("ArrivalTime", transform_time_udf(df['ArrivalTime']))
-
-# Calculate delay between departTime and arrivalTime
-df = df.withColumn("CurrentDelay", expr(
-    "from_unixtime(unix_timestamp(ArrivalTime, 'HH:mm') - unix_timestamp(DepartureTime, 'HH:mm'), 'HH:mm')"
-))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC
-# MAGIC ## Catégorisation des Retards
-# MAGIC
-# MAGIC Dans cette section, nous effectuons la catégorisation des retards en fonction de la valeur du délai et ajoutons une nouvelle colonne 'CategoryLate' à notre DataFrame `df`.
-
-# COMMAND ----------
-
 # Define category_late function to deal with times
 def category_late(currentDelay):
     parts = currentDelay.split(':')
@@ -180,18 +140,6 @@ def category_late(currentDelay):
     else:
         return 'Long Retard'
 
-# Transform the function we created to user-defined function
-category_late_udf = udf(category_late, StringType())
-
-# Apply the function the dataset
-df = df.withColumn('CategoryLate', category_late_udf(df['CurrentDelay']))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Analyse des Passagers
-# MAGIC Identifier les heures de pointe et hors pointe en fonction du nombre de passagers.
-
 # COMMAND ----------
 
 # Define function to guess the peak hours
@@ -202,11 +150,150 @@ def peak_hours(passengers):
         return 'Heure de pointe'
     else:
         return 'Heure hors pointe'
-    
-peak_hours_udf = udf(peak_hours, StringType())
 
-# Apply the function to our dataset
-df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
+# COMMAND ----------
+
+def delete_processed_file(filename):
+    # Retrieve processed files
+    processed_files_names = get_processed_files()
+
+    # Delete raw files that are already transformed
+    if filename in processed_file_names:
+        dbutils.fs.rm('/mnt/staging/raw/'+filename)
+    print(filename+' deleted successfully')
+
+# COMMAND ----------
+
+# Transformation
+def transform(filename):
+
+    from pyspark.sql.functions import col, year, month, date_format, expr, day, udf, avg, sum
+    from pyspark.sql.types import DateType, IntegerType, StringType, TimestampType
+
+    # Read the data
+    df = spark.read.csv("/mnt/staging/raw/"+filename, header=True)
+
+    # Define a dictionary to map column names to their data types
+    column_types = {
+        'Date': DateType(),
+        'TransportType': StringType(),
+        'Route': StringType(),
+        'Passengers': IntegerType(),
+        'DepartureStation': StringType(),
+        'ArrivalStation': StringType(),
+        'Delay': IntegerType()
+    }
+
+    # Cast the columns to their respective data types
+    for col_name, col_type in column_types.items():
+        df = df.withColumn(col_name, col(col_name).cast(col_type))
+
+    # Create hierarchy of the date
+    df = df.withColumn('Year', year(df['Date']))
+    df = df.withColumn('Month', month(df['Date']))
+    df = df.withColumn('Day', day(df['Date']))
+
+    # Register the transform_time function as a UDF
+    transform_time_udf = udf(transform_time, StringType())
+
+    # Apply the functions in the dataset
+    df = df.withColumn("ArrivalTime", transform_time_udf(df['ArrivalTime']))
+
+    # Calculate delay between departTime and arrivalTime
+    df = df.withColumn("CurrentDelay", expr(
+        "from_unixtime(unix_timestamp(ArrivalTime, 'HH:mm') - unix_timestamp(DepartureTime, 'HH:mm'), 'HH:mm')"
+    ))
+
+    # Transform the function we created to user-defined function
+    category_late_udf = udf(category_late, StringType())
+
+    # Apply the function the dataset
+    df = df.withColumn('CategoryLate', category_late_udf(df['CurrentDelay']))
+
+    peak_hours_udf = udf(peak_hours, StringType())
+
+    # Apply the function to our dataset
+    df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
+
+    # Agrégation des données par la colonne 'Route' avec calcul de la moyenne du retard, de la moyenne des passagers, et de la somme du retard
+    result_df = df.groupBy('Route').agg(
+        avg('Delay').alias('AverageDelay'),
+        avg('Passengers').alias('AveragePassengers'),
+        sum('Delay').alias('TotalTrips')
+    )
+
+    # Join the aggregated DataFrame 'result_df' back to the original DataFrame 'df'
+    df = df.join(result_df, on='Route', how='left')
+
+    import pandas as pd
+
+    # Convert the Spark DataFrame to a pandas DataFrame
+    pandas_df = df.toPandas()
+
+    file_cleaned = '/dbfs/mnt/staging/processed/'+filename
+
+    # Save the pandas DataFrame as a CSV file
+    pandas_df.to_csv(file_cleaned, index=False)
+    print(filename+' transformed successfully')
+
+    # Delete raw files that are already transformed
+    delete_processed_file(filename)
+
+# COMMAND ----------
+
+# Extract the file names
+raw_file_names = get_raw_files()
+processed_file_names = get_processed_files()
+
+print('------- Processed files --------')
+if len(processed_file_names) == 0:
+    print('There is no processed files yet')
+else:
+    [print(processed_file) for processed_file in processed_file_names]
+
+print('-------- Raw files ----------')
+if len(raw_file_names) == 0:
+    print('There is no processed files yet')
+else:
+    [print(raw_file) for raw_file in raw_file_names]
+
+# Print the file names
+for raw_name in raw_file_names:
+    if raw_name in processed_file_names:
+        dbutils.fs.rm('/mnt/staging/raw/'+raw_name)
+        print(raw_name+' deleted successfully')
+    else:
+        transform(raw_name)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC ## Ajout de Colonnes pour l'Année, le Mois et le Jour
+# MAGIC
+# MAGIC Dans cette section, nous ajoutons trois nouvelles colonnes à notre DataFrame `df` pour représenter l'année, le mois et le jour à partir de la colonne 'Date'.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC ## Transformation des Heures et Calcul du Délai
+# MAGIC
+# MAGIC Dans cette section, nous effectuons la transformation des heures d'arrivée et calculons le délai entre l'heure de départ et l'heure d'arrivée dans notre DataFrame `df`.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC
+# MAGIC ## Catégorisation des Retards
+# MAGIC
+# MAGIC Dans cette section, nous effectuons la catégorisation des retards en fonction de la valeur du délai et ajoutons une nouvelle colonne 'CategoryLate' à notre DataFrame `df`.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Analyse des Passagers
+# MAGIC Identifier les heures de pointe et hors pointe en fonction du nombre de passagers.
 
 # COMMAND ----------
 
@@ -221,31 +308,9 @@ df = df.withColumn('PeakHours', peak_hours_udf(df['Passengers']))
 
 # COMMAND ----------
 
-# Agrégation des données par la colonne 'Route' avec calcul de la moyenne du retard, de la moyenne des passagers, et de la somme du retard
-result_df = df.groupBy('Route').agg(
-    avg('Delay').alias('AverageDelay'),
-    avg('Passengers').alias('AveragePassengers'),
-    sum('Delay').alias('TotalTrips')
-)
-
-# Join the aggregated DataFrame 'result_df' back to the original DataFrame 'df'
-df = df.join(result_df, on='Route', how='left')
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC
 # MAGIC ## Enregistrement du DataFrame dans un Fichier CSV
 # MAGIC
 # MAGIC Dans cette section, nous enregistrons le DataFrame `df` dans un fichier CSV.
 # MAGIC
-
-# COMMAND ----------
-
-import pandas as pd
-
-# Convert the Spark DataFrame to a pandas DataFrame
-pandas_df = df.toPandas()
-
-# Save the pandas DataFrame as a CSV file
-pandas_df.to_csv('/dbfs/mnt/staging/processed/data_cleaned.csv', index=False)
