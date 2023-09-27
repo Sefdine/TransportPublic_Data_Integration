@@ -72,23 +72,23 @@ from datetime import datetime
 
 # Define a dictionary for each month with start and end dates
 months = {
-    'janvier': {
+    '01': {
         'start_date': datetime(2023, 1, 1),
         'end_date': datetime(2023, 1, 31)
     },
-    'fevrier': {
+    '02': {
         'start_date': datetime(2023, 2, 1),
         'end_date': datetime(2023, 2, 28)
     },
-    'mars': {
+    '03': {
         'start_date': datetime(2023, 3, 1),
         'end_date': datetime(2023, 3, 31)
     },
-    'avril': {
+    '04': {
         'start_date': datetime(2023, 4, 1),
         'end_date': datetime(2023, 4, 30)
     },
-    'mai': {
+    '05': {
         'start_date': datetime(2023, 5, 1),
         'end_date': datetime(2023, 5, 31)
     }

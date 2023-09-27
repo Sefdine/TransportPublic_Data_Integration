@@ -236,9 +236,6 @@ def transform(filename):
     pandas_df.to_csv(file_cleaned, index=False)
     print(filename+' transformed successfully')
 
-    # Delete raw files that are already transformed
-    delete_processed_file(filename)
-
 # COMMAND ----------
 
 # Extract the file names
@@ -253,7 +250,7 @@ else:
 
 print('-------- Raw files ----------')
 if len(raw_file_names) == 0:
-    print('There is no processed files yet')
+    print('There is no raw files yet')
 else:
     [print(raw_file) for raw_file in raw_file_names]
 
@@ -261,8 +258,7 @@ print("\n")
 # Print the file names
 for raw_name in raw_file_names:
     if raw_name in processed_file_names:
-        dbutils.fs.rm('/mnt/staging/raw/'+raw_name)
-        print(raw_name+' deleted successfully')
+        print(raw_name+' is already processed')
     else:
         transform(raw_name)
 
