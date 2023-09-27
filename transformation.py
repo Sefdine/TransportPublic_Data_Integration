@@ -257,6 +257,7 @@ if len(raw_file_names) == 0:
 else:
     [print(raw_file) for raw_file in raw_file_names]
 
+print("\n")
 # Print the file names
 for raw_name in raw_file_names:
     if raw_name in processed_file_names:
